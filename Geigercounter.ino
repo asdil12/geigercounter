@@ -54,7 +54,7 @@ public:
       }
     </script>
     </head><body>
-    <p><center><h2>Geigerz&auml;hler</h2><br><i>3.6 R&ouml;ntgen - not good not terrible</i></center></p><br><br>
+    <p><center><h2>Geigerz&auml;hler</h2><br><i>3.6 R&ouml;ntgen - not great not terrible</i></center></p><br><br>
     Interval: <span id="interval_value"></span><br>
     <input type="range" id="interval" name="points" min="0" max="200" onchange="ajax_update(this);">
     <br><br>
