@@ -3,8 +3,14 @@
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 
+#define D5 14
+#define D8 15
+
 uint16_t min_radiation_interval = 20;
-uint16_t radiation_interval_delta_minmax = 130;
+//uint16_t radiation_interval_delta_minmax = 130;
+int base_randomness = 300;
+int radiation = 10;
+
 
 const char* ssid = "Chernobyl";
 
@@ -55,11 +61,11 @@ public:
     </script>
     </head><body>
     <p><center><h2>Geigerz&auml;hler</h2><br><i>3.6 R&ouml;ntgen - not great not terrible</i></center></p><br><br>
-    Interval: <span id="interval_value"></span><br>
-    <input type="range" id="interval" name="points" min="0" max="200" onchange="ajax_update(this);">
+    Radiation: <span id="radiation_value">10</span><br>
+    <input type="range" id="radiation" name="points" min="0" max="100" value="10" onchange="ajax_update(this);">
     <br><br>
-    Delta: <span id="delta_value"></span><br>
-    <input type="range" id="delta" name="points" min="50" max="1000" onchange="ajax_update(this);">
+    Randomness: <span id="base_randomness_value">300</span><br>
+    <input type="range" id="base_randomness" name="points" min="20" max="300" value="300" onchange="ajax_update(this);">
     </body></html>
     )rawliteral";
     response->print(index_html);
@@ -77,7 +83,7 @@ void enable_wifi() {
   Serial.print("\r\n\r\nSetting AP (Access Point)…");
 
   WiFi.softAP(ssid);
-  
+
   IPAddress ip = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(ip);
@@ -85,27 +91,27 @@ void enable_wifi() {
 
   //AsyncWebServer server(80);
   dnsServer.start(53, "*", WiFi.softAPIP());
-    
-  server.on("/interval", HTTP_GET, [](AsyncWebServerRequest *request) {
+
+  server.on("/base_randomness", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (request->hasParam("set")) {
       AsyncWebParameter* p = request->getParam("set");
-      min_radiation_interval = atoi(p->value().c_str());
+      base_randomness = atoi(p->value().c_str());
     }
     char b [10];
-    itoa(min_radiation_interval, b, 10);
+    itoa(base_randomness, b, 10);
     request->send(200, "text/plain", b);
   });
 
-    server.on("/delta", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/radiation", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (request->hasParam("set")) {
       AsyncWebParameter* p = request->getParam("set");
-      radiation_interval_delta_minmax = atoi(p->value().c_str());
+      radiation = atoi(p->value().c_str());
     }
     char b [10];
-    itoa(radiation_interval_delta_minmax, b, 10);
+    itoa(radiation, b, 10);
     request->send(200, "text/plain", b);
   });
-  
+
   server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);//only when requested from AP
 
   /*
@@ -114,15 +120,16 @@ void enable_wifi() {
     request->send(200, "text/html", index_html);
   });
   */
-  
+
   server.begin();
 }
 
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
-  pinMode(14, OUTPUT);
-  pinMode(2, OUTPUT);
+  pinMode(D5, OUTPUT); // D5 for buzzer
+  pinMode(2, OUTPUT);  // D4
+  pinMode(D8, OUTPUT); // D8 for meter
 
   Serial.begin(9600);
 
@@ -134,8 +141,29 @@ void loop() {
   dnsServer.processNextRequest();
 
   digitalWrite(LED_BUILTIN, HIGH);  // Turn the LED off by making the voltage HIGH
-  tone(14, 2546, 5);
+  tone(D5, 2546, 5);
   //digitalWrite(LED_BUILTIN, LOW);   // Turn the LED on
-  delay(random(min_radiation_interval, min_radiation_interval+radiation_interval_delta_minmax));
+  //delay(random(min_radiation_interval, min_radiation_interval+radiation_interval_delta_minmax));
 
+  int randomness = base_randomness;
+  if (radiation > 10) randomness = min(randomness, 200);
+  if (radiation > 30) randomness = min(randomness, 150);
+  if (radiation > 50) randomness = min(randomness, 100);
+  if (radiation > 70)  randomness = min(randomness, 70);
+  if (radiation > 80)  randomness = min(randomness, 45);
+  if (radiation > 90)  randomness = min(randomness, 20);
+  if (radiation > 95)  randomness = min(randomness, 10);
+  if (radiation > 97)  randomness = min(randomness,  5);
+
+  int my_randomness = random(-randomness, randomness);
+
+  uint16_t radiation_interval = 2 * 100/radiation;
+  delay(max(0, radiation_interval + (-3*my_randomness) ));
+
+  int my_meter_randomness = max(-40, min(my_randomness, 40));
+  if (my_meter_randomness == -40) my_meter_randomness = random(-50, -20);
+  if (my_meter_randomness == 40) my_meter_randomness = random(20, 50);
+  if (randomness <= 10) my_meter_randomness = random(-15, 15);
+  uint8_t meterpos = 255*radiation/100;
+  analogWrite(D8, min(max(0, meterpos + my_meter_randomness), 255));
 }
