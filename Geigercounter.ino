@@ -3,7 +3,10 @@
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 
+#define D5 2
 #define D5 14
+#define D6 12
+#define D7 13
 #define D8 15
 
 uint16_t min_radiation_interval = 20;
@@ -11,6 +14,7 @@ uint16_t min_radiation_interval = 20;
 int base_randomness = 300;
 int radiation = 10;
 
+unsigned long last_interrupt_time = 0;
 
 const char* ssid = "Chernobyl";
 
@@ -124,12 +128,55 @@ void enable_wifi() {
   server.begin();
 }
 
+void modify_radiation(int factor) {
+  int delta = 15;
+  if (radiation >= 50) delta = 10;
+  if (radiation >= 70) delta = 7;
+  if (radiation >= 90) delta = 3;
+  int new_radiation = radiation + (delta * factor);
+  new_radiation = max(1, new_radiation);
+  new_radiation = min(100, new_radiation);
+  Serial.print(radiation);
+  Serial.print(" -> ");
+  Serial.println(new_radiation);
+  radiation = new_radiation;
+}
+
+int debounce() {
+  int returncode = 1; // 1 means bounce
+  unsigned long interrupt_time = millis();
+  Serial.print("Debounce: ");
+  Serial.println(interrupt_time);
+  if (interrupt_time - last_interrupt_time > 250) {
+    // no bounce
+    returncode = 0;
+  }
+  last_interrupt_time = interrupt_time;
+  return returncode;
+}
+
+
+void radiation_decrease_int() {
+  if (debounce() == 1) return;
+  modify_radiation(-1);
+}
+
+void radiation_increase_int() {
+  if (debounce() == 1) return;
+  modify_radiation(1);
+}
+
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
   pinMode(D5, OUTPUT); // D5 for buzzer
-  pinMode(2, OUTPUT);  // D4
+  pinMode(D4, OUTPUT);  // D4
   pinMode(D8, OUTPUT); // D8 for meter
+
+  pinMode(D6, INPUT_PULLUP); // DOWN
+  pinMode(D7, INPUT_PULLUP); // UP
+  //attachInterrupt(digitalPinToInterrupt(D6), radiation_decrease_int, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(D7), radiation_increase_int, LOW);
 
   Serial.begin(9600);
 
@@ -139,6 +186,9 @@ void setup() {
 // the loop function runs over and over again forever
 void loop() {
   dnsServer.processNextRequest();
+
+  if (digitalRead(D6) == LOW) radiation_decrease_int();
+  if (digitalRead(D7) == LOW) radiation_increase_int();
 
   digitalWrite(LED_BUILTIN, HIGH);  // Turn the LED off by making the voltage HIGH
   tone(D5, 2546, 5);
